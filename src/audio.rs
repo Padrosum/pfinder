@@ -15,6 +15,7 @@ impl Audio {
     }
 
     pub fn shoot(&self)       { self.tone(180.0, 90,  WaveKind::Square, 0.25); }
+    pub fn footstep(&self)    { self.tone(70.0,  22,  WaveKind::Sine,   0.07); }
     pub fn damage(&self)      { self.tone(880.0, 130, WaveKind::Square, 0.30); }
     pub fn enemy_alert(&self) { self.tone(440.0, 80,  WaveKind::Square, 0.15); }
 

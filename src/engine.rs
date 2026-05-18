@@ -30,7 +30,7 @@ const TARGET_FRAME: Duration = Duration::from_micros(16_667);
 const HOLD_FRAMES: u64 = 20;
 
 #[derive(PartialEq, Clone, Copy)]
-enum Phase { Playing, GameOver, Victory }
+enum Phase { Title, Playing, Paused, GameOver, Victory }
 
 // ── Player ────────────────────────────────────────────────────────────────────
 struct Player {
@@ -153,6 +153,7 @@ fn game_loop(out: &mut impl Write) -> io::Result<()> {
     let mut rng   = rand::thread_rng();
     let audio: Option<Audio> = std::panic::catch_unwind(Audio::new).unwrap_or(None);
     let mut keys;
+    let mut first_run = true;
 
     'outer: loop {
         let map     = Map::generate(&mut rng);
@@ -161,7 +162,8 @@ fn game_loop(out: &mut impl Write) -> io::Result<()> {
             .map(|&(x,y)| Enemy::new(x,y)).collect();
         let mut loot: Vec<Loot> = Vec::new();
         let mut time_left     = TIMER_START;
-        let mut phase         = Phase::Playing;
+        let mut phase         = if first_run { first_run = false; Phase::Title } else { Phase::Playing };
+        let mut step_timer    = 0.0f64;
         let mut flash_timer   = 0.0f64;
         let mut shake_timer   = 0.0f64;
         let mut gun_flash     = 0.0f64; // muzzle-flash timer
@@ -184,9 +186,10 @@ fn game_loop(out: &mut impl Write) -> io::Result<()> {
             let vh      = total_h.saturating_sub(HUD_ROWS);
 
             // ── Single-pass event processing ──────────────────────────────
-            let mut shoot   = false;
-            let mut quit    = false;
-            let mut restart = false;
+            let mut shoot        = false;
+            let mut quit         = false;
+            let mut restart      = false;
+            let mut pause_toggle = false;
 
             while event::poll(Duration::ZERO)? {
                 match event::read()? {
@@ -221,6 +224,7 @@ fn game_loop(out: &mut impl Write) -> io::Result<()> {
                                 if release { keys.release(5); }
                             }
                             KeyCode::Char(' ') if press         => shoot   = true,
+                            KeyCode::Char('p') if press         => pause_toggle = true,
                             KeyCode::Char('r') if press         => restart = true,
                             KeyCode::Esc | KeyCode::Char('q') if press => quit = true,
                             KeyCode::Char('c')
@@ -239,8 +243,13 @@ fn game_loop(out: &mut impl Write) -> io::Result<()> {
                 }
             }
 
-            if quit                              { break 'outer; }
-            if restart && phase != Phase::Playing { break 'game;  }
+            if quit { break 'outer; }
+            if shoot && phase == Phase::Title { phase = Phase::Playing; shoot = false; }
+            if pause_toggle {
+                if phase == Phase::Playing { phase = Phase::Paused; }
+                else if phase == Phase::Paused { phase = Phase::Playing; }
+            }
+            if restart && matches!(phase, Phase::GameOver | Phase::Victory) { break 'game; }
 
             // ── Game logic ────────────────────────────────────────────────
             if phase == Phase::Playing {
@@ -264,6 +273,18 @@ fn game_loop(out: &mut impl Write) -> io::Result<()> {
                 if keys.held(5) {
                     let (dx, dy) = (player.plane_x * ms, player.plane_y * ms);
                     player.try_move(&map, dx, dy);
+                }
+
+                // Footstep
+                let moving = keys.held(0) || keys.held(1) || keys.held(4) || keys.held(5);
+                if moving {
+                    step_timer -= dt;
+                    if step_timer <= 0.0 {
+                        step_timer = 0.38;
+                        if let Some(ref a) = audio { a.footstep(); }
+                    }
+                } else {
+                    step_timer = 0.0;
                 }
 
                 // Hitscan shoot
@@ -409,9 +430,12 @@ fn game_loop(out: &mut impl Write) -> io::Result<()> {
             // ── Render ────────────────────────────────────────────────────
             let mut buf = Buffer::new(vw, total_h);
             match phase {
-                Phase::Playing => {
-                    let flash = flash_timer > 0.0;
-                    let (sx, sy) = if shake_timer > 0.0 {
+                Phase::Title => {
+                    raycaster::render_title(&mut buf);
+                }
+                Phase::Playing | Phase::Paused => {
+                    let flash = phase == Phase::Playing && flash_timer > 0.0;
+                    let (sx, sy) = if phase == Phase::Playing && shake_timer > 0.0 {
                         (rng.gen_range(-1i32..=1), rng.gen_range(-1i32..=1))
                     } else { (0, 0) };
                     let esprites: Vec<(f64, f64, bool)> = enemies.iter()
@@ -428,6 +452,9 @@ fn game_loop(out: &mut impl Write) -> io::Result<()> {
                     );
                     let exit_world = (map.exit.0 as f64 + 0.5, map.exit.1 as f64 + 0.5);
                     render_hud(&mut buf, &player, time_left, vw, vh, exit_world);
+                    if phase == Phase::Paused {
+                        raycaster::render_pause(&mut buf, vh);
+                    }
                 }
                 Phase::GameOver => raycaster::render_gameover(&mut buf),
                 Phase::Victory  => raycaster::render_victory(&mut buf, time_left, player.ammo),
@@ -582,6 +609,7 @@ fn render_hud(buf: &mut Buffer, player: &Player, time_left: f64, vw: usize, vh: 
     keybind!("[A/D]",    "Turn");
     keybind!("[← →]",   "Strafe");
     keybind!("[SPACE]",  "Shoot");
+    keybind!("[P]",      "Pause");
     keybind!("[R]",      "Restart");
     keybind!("[Q/ESC]",  "Quit");
     let _ = cx; // consumed after last keybind spacer

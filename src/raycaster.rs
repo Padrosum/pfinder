@@ -281,6 +281,62 @@ pub fn render_view(
     }
 }
 
+// ── Title Screen ─────────────────────────────────────────────────────────────
+pub fn render_title(buf: &mut Buffer) {
+    let (w, h) = (buf.width, buf.height);
+    for y in 0..h {
+        for x in 0..w {
+            buf.put(x, y, if (x + y) % 3 == 0 { '·' } else { ' ' },
+                    Color::AnsiValue(235), Color::Black);
+        }
+    }
+    let art: &[(&str, Color)] = &[
+        (" ██████  ███████ ██ ███   ██ ██████  ███████ ██████  ", Color::AnsiValue(46)),
+        (" ██   ██ ██      ██ ████  ██ ██   ██ ██      ██   ██ ", Color::AnsiValue(83)),
+        (" ██████  █████   ██ ██ ██ ██ ██   ██ █████   ██████  ", Color::AnsiValue(83)),
+        (" ██      ██      ██ ██  ████ ██   ██ ██      ██  ██  ", Color::AnsiValue(83)),
+        (" ██      ██      ██ ██   ███ ██████  ███████ ██   ██ ", Color::AnsiValue(46)),
+        ("", Color::Black),
+        ("      A retro 3D raycasting game for your terminal", Color::AnsiValue(244)),
+        ("", Color::Black),
+        ("             [ SPACE ]  Start Game", Color::White),
+        ("             [ Q ]      Quit      ", Color::AnsiValue(240)),
+    ];
+    let start_y = h.saturating_sub(art.len() + 2) / 2;
+    for (i, &(line, fg)) in art.iter().enumerate() {
+        let sx = w.saturating_sub(line.len()) / 2;
+        buf.put_str(sx, start_y + i, line, fg, Color::Black);
+    }
+}
+
+// ── Pause Overlay ─────────────────────────────────────────────────────────────
+pub fn render_pause(buf: &mut Buffer, view_h: usize) {
+    let w = buf.width;
+    let lines: &[(&str, Color)] = &[
+        ("┌────────────────────────┐", Color::AnsiValue(240)),
+        ("│         PAUSED         │", Color::AnsiValue(226)),
+        ("│                        │", Color::AnsiValue(240)),
+        ("│   [ P ]   Resume       │", Color::White),
+        ("│   [ R ]   New Game     │", Color::AnsiValue(244)),
+        ("│   [ Q ]   Quit         │", Color::AnsiValue(244)),
+        ("└────────────────────────┘", Color::AnsiValue(240)),
+    ];
+    let bh = lines.len();
+    let bw = lines[0].0.chars().count();
+    let by = (view_h / 2).saturating_sub(bh / 2);
+    let bx = w.saturating_sub(bw) / 2;
+    for (i, &(line, fg)) in lines.iter().enumerate() {
+        let y = by + i;
+        if y >= buf.height { break; }
+        let bg = Color::AnsiValue(234);
+        let row_fg = if i == 1 { Color::AnsiValue(226) } else { fg };
+        for (j, ch) in line.chars().enumerate() {
+            if bx + j >= w { break; }
+            buf.put(bx + j, y, ch, row_fg, bg);
+        }
+    }
+}
+
 // ── Game Over ─────────────────────────────────────────────────────────────────
 pub fn render_gameover(buf: &mut Buffer) {
     let (w, h) = (buf.width, buf.height);
