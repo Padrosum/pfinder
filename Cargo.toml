@@ -1,0 +1,13 @@
+[package]
+name = "pfinder"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "pfinder"
+path = "src/main.rs"
+
+[dependencies]
+crossterm = "0.27"
+rand = "0.8"
+rodio = { version = "0.19", default-features = false, features = ["wav"] }
