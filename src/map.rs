@@ -67,8 +67,13 @@ impl Map {
         let mut enemy_spawns = Vec::new();
         for cy in 0..maze_h {
             for cx in 0..maze_w {
-                let dist = cx + cy; // Manhattan distance from (0,0)
-                if dist >= 4 && rng.gen_bool(0.22) {
+                let room_dist = cx + cy;
+                let world_x = (cx * 2 + 1) as f64 + 0.5;
+                let world_y = (cy * 2 + 1) as f64 + 0.5;
+                let dx = world_x - 1.5;
+                let dy = world_y - 1.5;
+                let world_dist = (dx * dx + dy * dy).sqrt();
+                if room_dist >= 6 && world_dist > 9.0 && rng.gen_bool(0.22) {
                     let gx = cx * 2 + 1;
                     let gy = cy * 2 + 1;
                     if grid[gy][gx] == 0 {
@@ -78,9 +83,9 @@ impl Map {
             }
         }
         if enemy_spawns.len() < 3 {
-            enemy_spawns.push((5.5, 5.5));
-            enemy_spawns.push((9.5, 5.5));
-            enemy_spawns.push((5.5, 9.5));
+            enemy_spawns.push((13.5, 5.5));
+            enemy_spawns.push((9.5, 13.5));
+            enemy_spawns.push((13.5, 13.5));
         }
 
         Map {

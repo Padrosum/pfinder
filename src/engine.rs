@@ -17,7 +17,7 @@ use crate::raycaster::{self, Buffer, Cell};
 
 const TIMER_START: f64     = 90.0;
 const MOVE_SPEED: f64      = 3.0;
-const ROT_SPEED: f64       = 2.2;
+const ROT_SPEED: f64       = 1.8;
 const PLAYER_MAX_HP: i32   = 100;
 const PLAYER_MAX_AMMO: i32 = 30;
 const HUD_ROWS: usize      = 4;   // separator + status + keys + separator
@@ -347,7 +347,7 @@ fn game_loop(out: &mut impl Write) -> io::Result<()> {
                                 enemies[i].state = EnemyState::Patrol;
                             }
                             if dist > 0.001 {
-                                let sp = 1.5 * dt;
+                                let sp = 1.0 * dt;
                                 let nx = enemies[i].x + (edx / dist) * sp;
                                 if !map.is_wall(nx as i32, enemies[i].y as i32) {
                                     enemies[i].x = nx;
@@ -357,7 +357,21 @@ fn game_loop(out: &mut impl Write) -> io::Result<()> {
                                     enemies[i].y = ny;
                                 }
                             }
-                            if dist < 0.9 { hit = true; }
+                            if dist < 0.9 {
+                                hit = true;
+                                // knock enemy back away from player
+                                let (kick_dx, kick_dy) = (-edx / dist, -edy / dist);
+                                for _ in 0..20 {
+                                    let nx = enemies[i].x + kick_dx * 0.2;
+                                    let ny = enemies[i].y + kick_dy * 0.2;
+                                    if !map.is_wall(nx as i32, enemies[i].y as i32) { enemies[i].x = nx; }
+                                    if !map.is_wall(enemies[i].x as i32, ny as i32) { enemies[i].y = ny; }
+                                }
+                                // briefly patrol away before re-engaging
+                                enemies[i].patrol_angle = kick_dy.atan2(kick_dx);
+                                enemies[i].patrol_timer = 1.2;
+                                enemies[i].state = EnemyState::Patrol;
+                            }
                         }
                         EnemyState::Dead => {}
                     }
@@ -412,7 +426,8 @@ fn game_loop(out: &mut impl Write) -> io::Result<()> {
                         &mut buf, vh, flash, sx, sy,
                         gun_flash > 0.0,
                     );
-                    render_hud(&mut buf, &player, time_left, vw, vh);
+                    let exit_world = (map.exit.0 as f64 + 0.5, map.exit.1 as f64 + 0.5);
+                    render_hud(&mut buf, &player, time_left, vw, vh, exit_world);
                 }
                 Phase::GameOver => raycaster::render_gameover(&mut buf),
                 Phase::Victory  => raycaster::render_victory(&mut buf, time_left, player.ammo),
@@ -435,7 +450,25 @@ fn game_loop(out: &mut impl Write) -> io::Result<()> {
 //  r1: ║  HP bar │ AMMO │ TIME │ compass │ goal                            ║
 //  r2: ║  key reference                                                    ║
 //  r3: ╚══ bottom border ═══════════════════════════════════════════════════╝
-fn render_hud(buf: &mut Buffer, player: &Player, time_left: f64, vw: usize, vh: usize) {
+fn exit_arrow(player: &Player, exit: (f64, f64)) -> (&'static str, u32) {
+    let dx = exit.0 - player.x;
+    let dy = exit.1 - player.y;
+    let dist = ((dx * dx + dy * dy).sqrt()) as u32;
+    let fwd  = dx * player.dir_x + dy * player.dir_y;
+    let side = dy * player.dir_x - dx * player.dir_y;
+    let deg  = side.atan2(fwd).to_degrees();
+    let arrow = if      deg >= -22.5 && deg <  22.5 { "↑" }
+                else if deg >=  22.5 && deg <  67.5 { "↗" }
+                else if deg >=  67.5 && deg < 112.5 { "→" }
+                else if deg >= 112.5 && deg < 157.5 { "↘" }
+                else if deg >=  157.5 || deg < -157.5 { "↓" }
+                else if deg >= -157.5 && deg < -112.5 { "↙" }
+                else if deg >= -112.5 && deg <  -67.5 { "←" }
+                else                                   { "↖" };
+    (arrow, dist)
+}
+
+fn render_hud(buf: &mut Buffer, player: &Player, time_left: f64, vw: usize, vh: usize, exit: (f64, f64)) {
     let (r0, r1, r2, r3) = (vh, vh + 1, vh + 2, vh + 3);
     if r3 >= buf.height { return; }
 
@@ -511,13 +544,9 @@ fn render_hud(buf: &mut Buffer, player: &Player, time_left: f64, vw: usize, vh: 
 
     sep_char!(r1);
 
-    // Compass
-    write_hud!(r1, &format!("{}  ", player.compass()), Color::AnsiValue(226));
-
-    sep_char!(r1);
-
-    // Goal
-    write_hud!(r1, "FIND THE EXIT", Color::AnsiValue(46));
+    // Exit direction compass
+    let (arrow, edist) = exit_arrow(player, exit);
+    write_hud!(r1, &format!("EXIT {} {}u", arrow, edist), Color::AnsiValue(46));
 
     // ── Key reference row (r2) ───────────────────────────────────────────────
     cx = 2;

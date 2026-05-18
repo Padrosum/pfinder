@@ -79,13 +79,17 @@ const SPRITE_SCALE: f64 = 0.65;
 
 fn wall_glyph(dist: f64, side: u8) -> (char, Color) {
     // side 0 = E/W face (lit), side 1 = N/S face (shadowed)
-    let (ch, lit, dim): (char, u8, u8) = match dist as u32 {
-        0..=3  => ('█', 252, 244),
-        4..=6  => ('▓', 246, 239),
-        7..=10 => ('▒', 241, 235),
-        11..=14=> ('░', 237, 233),
-        _      => return (' ', Color::Black),
-    };
+    // 8 bands instead of 4 — smoother distance transitions, less eye strain
+    let (ch, lit, dim): (char, u8, u8) =
+        if      dist < 2.0  { ('█', 254, 250) }
+        else if dist < 4.0  { ('█', 251, 246) }
+        else if dist < 6.0  { ('▓', 248, 243) }
+        else if dist < 8.0  { ('▓', 245, 240) }
+        else if dist < 10.0 { ('▒', 242, 237) }
+        else if dist < 12.0 { ('▒', 239, 234) }
+        else if dist < 15.0 { ('░', 236, 232) }
+        else if dist < 19.0 { ('░', 233, 232) }
+        else { return (' ', Color::Black) };
     let idx = if side == 0 { lit } else { dim };
     (ch, Color::AnsiValue(idx))
 }
@@ -136,14 +140,12 @@ pub fn render_view(
     // ── Ceiling and floor ─────────────────────────────────────────────────────
     for y in 0..vh {
         let bg = if y < vh / 2 {
-            // Ceiling: gradient darkens away from horizon
-            let t = 1.0 - y as f64 / (vh / 2) as f64; // 0 near horizon, 1 at top
-            let v = (232.0 + t * 4.0) as u8;           // 232..236
+            let t = 1.0 - y as f64 / (vh / 2) as f64;
+            let v = (232.0 + t * 7.0).min(239.0) as u8; // 232..239
             Color::AnsiValue(v)
         } else {
-            // Floor: gradient darkens away from horizon
-            let t = (y - vh / 2) as f64 / (vh / 2) as f64; // 0 near horizon, 1 at bottom
-            let v = (236u8).saturating_sub((t * 4.0) as u8); // 236..232
+            let t = (y - vh / 2) as f64 / (vh / 2) as f64;
+            let v = (239u8).saturating_sub((t * 7.0) as u8); // 239..232
             Color::AnsiValue(v)
         };
         for x in 0..vw {
@@ -240,12 +242,7 @@ pub fn render_view(
     {
         let cx = vw / 2;
         let cy = vh / 2;
-        // Dot + tick marks with gap
-        buf.put(cx, cy, '·', Color::White, Color::Black);
-        if cy >= 2            { buf.put(cx, cy - 2, '│', Color::AnsiValue(244), Color::Black); }
-        if cy + 2 < vh        { buf.put(cx, cy + 2, '│', Color::AnsiValue(244), Color::Black); }
-        if cx >= 4            { buf.put(cx - 4, cy, '─', Color::AnsiValue(244), Color::Black); }
-        if cx + 4 < vw        { buf.put(cx + 4, cy, '─', Color::AnsiValue(244), Color::Black); }
+        buf.put(cx, cy, '·', Color::AnsiValue(255), Color::Black);
     }
 
     // ── Gun sprite ────────────────────────────────────────────────────────────
